@@ -56,7 +56,7 @@ u32 decompress(u8 *src_ptr, u32 src_size, u8 *dst_ptr, u32 dst_size)
 
   auto ratio = (float)in_size/out_size;
 
-  printf("(%%%.2f) %d ==> %d\n", 100.0f*ratio, in_size, out_size);
+  printf("decompressed: (%%%.2f) %d ==> %d\n", 100.0f*ratio, in_size, out_size);
 
   return out_size;
 }
@@ -90,7 +90,9 @@ u32 compress(u8 *input, u32 input_size, u8 *output, u32 output_size)
       // the index of current character.
       u32 gi = in_ptr-input+i;
       // start from the first byte in the data but not more than 0xffff back from current location.
-      u32 sj = MAX(0, (s32)gi-0xffff);
+      // 0xffff is too slow for >10MB files.
+      auto MAX_LOOKBACK = 0xfff;
+      u32 sj = MAX(0, (s32)gi-MAX_LOOKBACK);
 
       // try to match against all past string sequences
       for(u32 j=sj; j<gi; j++)
@@ -114,6 +116,12 @@ u32 compress(u8 *input, u32 input_size, u8 *output, u32 output_size)
 
       // did not find a match, continue encoding as raw data.
       data_len++;
+    }
+
+    {
+      auto idx = in_ptr - input;
+      if(idx % 10000 == 0)
+        printf("%%%.2f\n", 100.0f*idx/input_size);
     }
 
     // output the raw data and match (if it exists) in the same format expected by the decompress function.
@@ -163,6 +171,11 @@ ReadFileResult read_file(char *filename){
 
 int main(){
 
+#if 1
+  auto read_res = read_file("main.exe");
+  auto data = read_res.data;
+  auto data_size = read_res.size;
+#else
   char raw[] = R"V0G0N(
   u32 compressed_buffer_size = 10 * 1024;
   auto compressed = (u8 *)calloc(1, compressed_buffer_size);
@@ -184,12 +197,6 @@ int main(){
     printf("Error: DATA MISMATCH\n");
   }
   )V0G0N";
-
-#if 1
-  auto read_res = read_file("clang-cpp.exe");
-  auto data = read_res.data;
-  auto data_size = read_res.size;
-#else
   auto data = (u8 *)raw;
   auto data_size = sizeof(raw);
 #endif
@@ -200,7 +207,7 @@ int main(){
   auto compressed_size = compress(data, data_size, compressed, compressed_buffer_size);
   {
     auto ratio = (float)compressed_size/data_size;
-    printf("compressed: (%%%.2f) %d ==> %d\n", 100.0f*ratio, data_size, compressed_size);
+    printf("compressed:   (%%%.2f) %d ==> %d\n", 100.0f*ratio, data_size, compressed_size);
   }
 
   int output_buffer_size = data_size * 2;
